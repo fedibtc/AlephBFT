@@ -165,6 +165,16 @@ impl<H: Hasher, D: Data, K: Keychain> UnitStore<H, D, K> {
     pub(crate) fn mark_forker(&mut self, forker: NodeIndex) -> Vec<SignedUnit<H, D, K>> {
         if self.is_forker[forker] {
             warn!(target: "AlephBFT-unit-store", "Trying to mark the node {:?} as forker for the second time.", forker);
+        } else {
+            // Manifold: a forker leaves fewer honest creators, and a session
+            // needs a threshold of them, so this is the earliest sign of a
+            // stall that fedimint's `status` cannot show. Emitted once per
+            // forker per session store. `forker` is a peer index.
+            tracing::warn!(
+                safe_to_share = true,
+                forker = forker.0,
+                "AlephBFT marked a peer as forker"
+            );
         }
         self.is_forker.insert(forker);
         (0..=self.max_round)
