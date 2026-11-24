@@ -1,6 +1,6 @@
 use crate::{
-    network::IncludedData, Data, Hasher, Index, Keychain, NodeCount, NodeIndex, NodeMap,
-    NodeSubset, Round, SessionId, Signable, Signed, UncheckedSigned,
+    network::CarriedUnit, Data, Hasher, Index, Keychain, NodeCount, NodeIndex, NodeMap, NodeSubset,
+    Round, SessionId, Signable, Signed, UncheckedSigned,
 };
 use codec::{Decode, Encode};
 use derivative::Derivative;
@@ -164,12 +164,12 @@ impl<H: Hasher, D: Data> FullUnit<H, D> {
     pub(crate) fn included_data(&self) -> Vec<D> {
         self.data.iter().cloned().collect()
     }
-    pub(crate) fn included(&self) -> Option<IncludedData<D>> {
-        self.data.clone().map(|data| IncludedData {
+    pub(crate) fn carried(&self) -> CarriedUnit<D> {
+        CarriedUnit {
             creator: self.creator(),
             round: self.round(),
-            data,
-        })
+            data: self.data.clone(),
+        }
     }
     pub(crate) fn session_id(&self) -> SessionId {
         self.session_id

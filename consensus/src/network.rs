@@ -21,23 +21,23 @@ impl<H: Hasher, D: Data, S: Signature, MS: PartialMultisignature> NetworkDataInn
         }
     }
 
-    pub(crate) fn included(&self) -> Vec<IncludedData<D>> {
+    pub(crate) fn carried_units(&self) -> Vec<CarriedUnit<D>> {
         match self {
-            Self::Units(message) => message.included(),
-            Self::Alert(message) => message.included(),
+            Self::Units(message) => message.carried_units(),
+            Self::Alert(message) => message.carried_units(),
         }
     }
 }
 
-/// Data that a network message carries, with the creator and round of the
-/// unit carrying it. Units are rebroadcast and sent in responses, so the same
-/// unit can arrive many times; its coordinates tell the copies apart from
+/// A unit that a network message carries: its creator, its round, and its
+/// data if it has any. Units are rebroadcast and sent in responses, so the
+/// same unit can arrive many times; its coordinates tell the copies apart from
 /// other units that carry equal data.
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub struct IncludedData<D> {
+pub struct CarriedUnit<D> {
     pub creator: NodeIndex,
     pub round: Round,
-    pub data: D,
+    pub data: Option<D>,
 }
 
 /// NetworkData is the opaque format for all data that a committee member needs to send to other nodes.
@@ -55,11 +55,11 @@ impl<H: Hasher, D: Data, S: Signature, MS: PartialMultisignature> NetworkData<H,
         self.0.included_data()
     }
 
-    /// Like [`Self::included_data`], with the creator and round of the unit
-    /// that carries each item. Nothing is verified: a message may name any
-    /// creator.
-    pub fn included(&self) -> Vec<IncludedData<D>> {
-        self.0.included()
+    /// Every unit in the message, including units without data, with its
+    /// creator and round. Nothing is verified: a message may name any creator
+    /// and round.
+    pub fn carried_units(&self) -> Vec<CarriedUnit<D>> {
+        self.0.carried_units()
     }
 }
 
@@ -201,12 +201,20 @@ mod tests {
         round: Round,
         data: Data,
     ) -> UncheckedSignedUnit<Hasher64, Data, Signature> {
+        test_unchecked_unit_with(creator, round, Some(data))
+    }
+
+    fn test_unchecked_unit_with(
+        creator: NodeIndex,
+        round: Round,
+        data: Option<Data>,
+    ) -> UncheckedSignedUnit<Hasher64, Data, Signature> {
         let control_hash = ControlHash {
             parents_mask: NodeSubset::with_size(7.into()),
             combined_hash: 0.using_encoded(Hasher64::hash),
         };
         let pu = PreUnit::new(creator, round, control_hash);
-        let signable = FullUnit::new(pu, Some(data), 0);
+        let signable = FullUnit::new(pu, data, 0);
         Signed::sign(signable, &Keychain::new(0.into(), creator)).into_unchecked()
     }
 
@@ -220,18 +228,23 @@ mod tests {
     }
 
     #[test]
-    fn included_names_the_unit_carrying_each_item() {
-        use super::IncludedData;
+    fn carried_units_name_every_unit_with_or_without_data() {
+        use super::CarriedUnit;
         use UnitMessage::{NewUnit, RequestCoord, ResponseParents};
 
-        let included = |creator: usize, round, data| IncludedData {
+        let carried = |creator: usize, round, data| CarriedUnit {
             creator: creator.into(),
             round,
             data,
         };
 
         let nd = TestNetworkData::new(Units(NewUnit(test_unchecked_unit(5.into(), 43, 1729))));
-        assert_eq!(nd.included(), vec![included(5, 43, 1729)]);
+        assert_eq!(nd.carried_units(), vec![carried(5, 43, Some(1729))]);
+
+        // A unit without data is reported too, so a receiver learns its round.
+        let nd = TestNetworkData::new(Units(NewUnit(test_unchecked_unit_with(3.into(), 44, None))));
+        assert_eq!(nd.carried_units(), vec![carried(3, 44, None)]);
+        assert_eq!(nd.included_data(), vec![]);
 
         // Units with equal data stay apart by their coordinates.
         let nd = TestNetworkData::new(Units(ResponseParents(
@@ -239,17 +252,23 @@ mod tests {
             vec![
                 test_unchecked_unit(1.into(), 7, 99),
                 test_unchecked_unit(2.into(), 7, 99),
+                test_unchecked_unit_with(3.into(), 7, None),
                 test_unchecked_unit(1.into(), 8, 99),
             ],
         )));
         assert_eq!(
-            nd.included(),
-            vec![included(1, 7, 99), included(2, 7, 99), included(1, 8, 99)]
+            nd.carried_units(),
+            vec![
+                carried(1, 7, Some(99)),
+                carried(2, 7, Some(99)),
+                carried(3, 7, None),
+                carried(1, 8, Some(99)),
+            ]
         );
         assert_eq!(nd.included_data(), vec![99, 99, 99]);
 
         let nd = TestNetworkData::new(Units(RequestCoord(1.into(), UnitCoord::new(7, 2.into()))));
-        assert_eq!(nd.included(), vec![]);
+        assert_eq!(nd.carried_units(), vec![]);
     }
 
     #[test]

@@ -30,7 +30,7 @@ pub use config::{
     create_config, default_config, default_delay_config, exponential_slowdown, Config, DelayConfig,
 };
 pub use member::{run_session, LocalIO};
-pub use network::{IncludedData, NetworkData};
+pub use network::{CarriedUnit, NetworkData};
 pub use terminator::{handle_task_termination, Terminator};
 
 type Receiver<T> = futures::channel::mpsc::UnboundedReceiver<T>;

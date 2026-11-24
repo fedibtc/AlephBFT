@@ -1,5 +1,5 @@
 use crate::{
-    network::IncludedData,
+    network::CarriedUnit,
     runway::Request,
     units::{UncheckedSignedUnit, ValidationError, Validator},
     Data, Hasher, Keychain, NodeCount, NodeIndex, NodeMap, Receiver, Round, Sender, Signable,
@@ -73,11 +73,11 @@ impl<H: Hasher, D: Data, S: Signature> NewestUnitResponse<H, D, S> {
         }
     }
 
-    /// Like [`Self::included_data`], with the unit that carries it.
-    pub fn included(&self) -> Vec<IncludedData<D>> {
+    /// The unit in this message, if any, with or without data.
+    pub fn carried_units(&self) -> Vec<CarriedUnit<D>> {
         self.unit
             .iter()
-            .filter_map(|u| u.as_signable().included())
+            .map(|u| u.as_signable().carried())
             .collect()
     }
 

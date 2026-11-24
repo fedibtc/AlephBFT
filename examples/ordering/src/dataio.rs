@@ -1,5 +1,5 @@
 use aleph_bft_types::{
-    DataProvider as DataProviderT, FinalizationHandler as FinalizationHandlerT, NodeIndex,
+    DataProvider as DataProviderT, FinalizationHandler as FinalizationHandlerT, NodeIndex, Round,
 };
 use async_trait::async_trait;
 use codec::{Decode, Encode};
@@ -32,7 +32,7 @@ impl DataProvider {
 
 #[async_trait]
 impl DataProviderT<Data> for DataProvider {
-    async fn get_data(&mut self) -> Option<Data> {
+    async fn get_data(&mut self, _round: Round) -> Option<Data> {
         if self.n_data == 0 {
             if self.stalled {
                 info!("Awaiting DataProvider::get_data forever");

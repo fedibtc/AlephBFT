@@ -1,7 +1,7 @@
 use crate::{
     handle_task_termination,
     member::Task::{CoordRequest, ParentsRequest, RequestNewest, UnitBroadcast},
-    network::{self, IncludedData},
+    network::{self, CarriedUnit},
     runway::{
         self, NetworkIO, NewestUnitResponse, Request, Response, RunwayIO, RunwayNotificationIn,
         RunwayNotificationOut,
@@ -63,19 +63,16 @@ impl<H: Hasher, D: Data, S: Signature> UnitMessage<H, D, S> {
         }
     }
 
-    pub(crate) fn included(&self) -> Vec<IncludedData<D>> {
+    pub(crate) fn carried_units(&self) -> Vec<CarriedUnit<D>> {
         match self {
-            Self::NewUnit(uu) | Self::ResponseCoord(uu) => {
-                uu.as_signable().included().into_iter().collect()
-            }
+            Self::NewUnit(uu) | Self::ResponseCoord(uu) => vec![uu.as_signable().carried()],
             Self::RequestCoord(_, _) | Self::RequestParents(_, _) | Self::RequestNewest(_, _) => {
                 Vec::new()
             }
-            Self::ResponseParents(_, units) => units
-                .iter()
-                .filter_map(|uu| uu.as_signable().included())
-                .collect(),
-            Self::ResponseNewest(response) => response.as_signable().included(),
+            Self::ResponseParents(_, units) => {
+                units.iter().map(|uu| uu.as_signable().carried()).collect()
+            }
+            Self::ResponseNewest(response) => response.as_signable().carried_units(),
         }
     }
 }

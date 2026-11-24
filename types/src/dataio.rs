@@ -1,18 +1,18 @@
 use async_trait::async_trait;
 
-use crate::NodeIndex;
-use crate::Round;
+use crate::{NodeIndex, Round};
 
 /// The source of data items that consensus should order.
 ///
 /// AlephBFT internally calls [`DataProvider::get_data`] whenever a new unit is created and data needs to be placed inside.
+/// It calls it once the unit's parents are known, with the round of that unit.
 ///
 /// We refer to the documentation https://cardinal-cryptography.github.io/AlephBFT/aleph_bft_api.html for a discussion
 /// and examples of how this trait can be implemented.
 #[async_trait]
 pub trait DataProvider<Data>: Sync + Send + 'static {
-    /// Outputs a new data item to be ordered
-    async fn get_data(&mut self) -> Option<Data>;
+    /// Outputs a new data item to be ordered in our unit of `round`
+    async fn get_data(&mut self, round: Round) -> Option<Data>;
 }
 
 /// The source of finalization of the units that consensus produces.
