@@ -1,6 +1,6 @@
 use crate::{
-    alerts::AlertMessage, member::UnitMessage, Data, Hasher, Network, PartialMultisignature,
-    Receiver, Recipient, Sender, Signature, Terminator,
+    alerts::AlertMessage, member::UnitMessage, Data, Hasher, Network, NodeIndex,
+    PartialMultisignature, Receiver, Recipient, Round, Sender, Signature, Terminator,
 };
 use codec::{Decode, Encode};
 use futures::{FutureExt, StreamExt};
@@ -20,6 +20,24 @@ impl<H: Hasher, D: Data, S: Signature, MS: PartialMultisignature> NetworkDataInn
             Self::Alert(message) => message.included_data(),
         }
     }
+
+    pub(crate) fn included(&self) -> Vec<IncludedData<D>> {
+        match self {
+            Self::Units(message) => message.included(),
+            Self::Alert(message) => message.included(),
+        }
+    }
+}
+
+/// Data that a network message carries, with the creator and round of the
+/// unit carrying it. Units are rebroadcast and sent in responses, so the same
+/// unit can arrive many times; its coordinates tell the copies apart from
+/// other units that carry equal data.
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct IncludedData<D> {
+    pub creator: NodeIndex,
+    pub round: Round,
+    pub data: D,
 }
 
 /// NetworkData is the opaque format for all data that a committee member needs to send to other nodes.
@@ -35,6 +53,13 @@ impl<H: Hasher, D: Data, S: Signature, MS: PartialMultisignature> NetworkData<H,
     /// ordered for optimization purposes.
     pub fn included_data(&self) -> Vec<D> {
         self.0.included_data()
+    }
+
+    /// Like [`Self::included_data`], with the creator and round of the unit
+    /// that carries each item. Nothing is verified: a message may name any
+    /// creator.
+    pub fn included(&self) -> Vec<IncludedData<D>> {
+        self.0.included()
     }
 }
 
@@ -192,6 +217,39 @@ mod tests {
         ) -> Self {
             super::NetworkData::<Hasher64, Data, Signature, PartialMultisignature>(inner)
         }
+    }
+
+    #[test]
+    fn included_names_the_unit_carrying_each_item() {
+        use super::IncludedData;
+        use UnitMessage::{NewUnit, RequestCoord, ResponseParents};
+
+        let included = |creator: usize, round, data| IncludedData {
+            creator: creator.into(),
+            round,
+            data,
+        };
+
+        let nd = TestNetworkData::new(Units(NewUnit(test_unchecked_unit(5.into(), 43, 1729))));
+        assert_eq!(nd.included(), vec![included(5, 43, 1729)]);
+
+        // Units with equal data stay apart by their coordinates.
+        let nd = TestNetworkData::new(Units(ResponseParents(
+            0.using_encoded(Hasher64::hash),
+            vec![
+                test_unchecked_unit(1.into(), 7, 99),
+                test_unchecked_unit(2.into(), 7, 99),
+                test_unchecked_unit(1.into(), 8, 99),
+            ],
+        )));
+        assert_eq!(
+            nd.included(),
+            vec![included(1, 7, 99), included(2, 7, 99), included(1, 8, 99)]
+        );
+        assert_eq!(nd.included_data(), vec![99, 99, 99]);
+
+        let nd = TestNetworkData::new(Units(RequestCoord(1.into(), UnitCoord::new(7, 2.into()))));
+        assert_eq!(nd.included(), vec![]);
     }
 
     #[test]

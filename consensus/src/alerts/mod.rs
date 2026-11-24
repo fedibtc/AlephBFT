@@ -1,6 +1,7 @@
 use crate::{
-    units::UncheckedSignedUnit, Data, Hasher, Index, Keychain, MultiKeychain, Multisigned,
-    NodeIndex, PartialMultisignature, Signable, Signature, UncheckedSigned,
+    network::IncludedData, units::UncheckedSignedUnit, Data, Hasher, Index, Keychain,
+    MultiKeychain, Multisigned, NodeIndex, PartialMultisignature, Signable, Signature,
+    UncheckedSigned,
 };
 use aleph_bft_rmc::Message as RmcMessage;
 use codec::{Decode, Encode};
@@ -85,6 +86,13 @@ impl<H: Hasher, D: Data, S: Signature> Alert<H, D, S> {
             .filter_map(|uu| uu.as_signable().data().clone())
             .collect()
     }
+
+    pub fn included(&self) -> Vec<IncludedData<D>> {
+        self.legit_units
+            .iter()
+            .filter_map(|uu| uu.as_signable().included())
+            .collect()
+    }
 }
 
 impl<H: Hasher, D: Data, S: Signature> Index for Alert<H, D, S> {
@@ -117,6 +125,13 @@ impl<H: Hasher, D: Data, S: Signature, MS: PartialMultisignature> AlertMessage<H
             Self::ForkAlert(unchecked_alert) => unchecked_alert.as_signable().included_data(),
             Self::RmcMessage(_, _) => Vec::new(),
             Self::AlertRequest(_, _) => Vec::new(),
+        }
+    }
+
+    pub fn included(&self) -> Vec<IncludedData<D>> {
+        match self {
+            Self::ForkAlert(unchecked_alert) => unchecked_alert.as_signable().included(),
+            Self::RmcMessage(_, _) | Self::AlertRequest(_, _) => Vec::new(),
         }
     }
 }
