@@ -1,6 +1,6 @@
 use crate::{
     alerts::AlertMessage, member::UnitMessage, Data, Hasher, Network, NodeIndex,
-    PartialMultisignature, Receiver, Recipient, Round, Sender, Signature, Terminator,
+    PartialMultisignature, Receiver, Recipient, Round, Sender, SessionId, Signature, Terminator,
 };
 use codec::{Decode, Encode};
 use futures::{FutureExt, StreamExt};
@@ -29,12 +29,15 @@ impl<H: Hasher, D: Data, S: Signature, MS: PartialMultisignature> NetworkDataInn
     }
 }
 
-/// A unit that a network message carries: its creator, its round, and its
-/// data if it has any. Units are rebroadcast and sent in responses, so the
-/// same unit can arrive many times; its coordinates tell the copies apart from
-/// other units that carry equal data.
+/// A unit that a network message carries: its session, its creator, its
+/// round, and its data if it has any. Units are rebroadcast and sent in
+/// responses, so the same unit can arrive many times; its coordinates tell the
+/// copies apart from other units that carry equal data. Peers keep sending the
+/// units of a session they just finished while the receiver runs the next
+/// one, so a unit's round means nothing without its session.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct CarriedUnit<D> {
+    pub session: SessionId,
     pub creator: NodeIndex,
     pub round: Round,
     pub data: Option<D>,
@@ -56,8 +59,8 @@ impl<H: Hasher, D: Data, S: Signature, MS: PartialMultisignature> NetworkData<H,
     }
 
     /// Every unit in the message, including units without data, with its
-    /// creator and round. Nothing is verified: a message may name any creator
-    /// and round.
+    /// session, creator and round. Nothing is verified: a message may name any
+    /// session, creator and round.
     pub fn carried_units(&self) -> Vec<CarriedUnit<D>> {
         self.0.carried_units()
     }
@@ -191,7 +194,7 @@ mod tests {
         member::UnitMessage,
         network::NetworkDataInner::{Alert, Units},
         units::{ControlHash, FullUnit, PreUnit, UncheckedSignedUnit, UnitCoord},
-        Hasher, NodeIndex, NodeSubset, Round, Signed,
+        Hasher, NodeIndex, NodeSubset, Round, SessionId, Signed,
     };
     use aleph_bft_mock::{Data, Hasher64, Keychain, PartialMultisignature, Signature};
     use codec::{Decode, Encode};
@@ -209,12 +212,21 @@ mod tests {
         round: Round,
         data: Option<Data>,
     ) -> UncheckedSignedUnit<Hasher64, Data, Signature> {
+        test_unchecked_unit_in(0, creator, round, data)
+    }
+
+    fn test_unchecked_unit_in(
+        session: SessionId,
+        creator: NodeIndex,
+        round: Round,
+        data: Option<Data>,
+    ) -> UncheckedSignedUnit<Hasher64, Data, Signature> {
         let control_hash = ControlHash {
             parents_mask: NodeSubset::with_size(7.into()),
             combined_hash: 0.using_encoded(Hasher64::hash),
         };
         let pu = PreUnit::new(creator, round, control_hash);
-        let signable = FullUnit::new(pu, data, 0);
+        let signable = FullUnit::new(pu, data, session);
         Signed::sign(signable, &Keychain::new(0.into(), creator)).into_unchecked()
     }
 
@@ -233,6 +245,7 @@ mod tests {
         use UnitMessage::{NewUnit, RequestCoord, ResponseParents};
 
         let carried = |creator: usize, round, data| CarriedUnit {
+            session: 0,
             creator: creator.into(),
             round,
             data,
@@ -269,6 +282,22 @@ mod tests {
 
         let nd = TestNetworkData::new(Units(RequestCoord(1.into(), UnitCoord::new(7, 2.into()))));
         assert_eq!(nd.carried_units(), vec![]);
+
+        // A unit names the session it was created in, so a receiver can tell a
+        // late unit of the previous session from one of its own.
+        let nd = TestNetworkData::new(Units(NewUnit(test_unchecked_unit_in(
+            6,
+            2.into(),
+            3610,
+            None,
+        ))));
+        assert_eq!(
+            nd.carried_units(),
+            vec![CarriedUnit {
+                session: 6,
+                ..carried(2, 3610, None)
+            }]
+        );
     }
 
     #[test]

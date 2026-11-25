@@ -166,6 +166,7 @@ impl<H: Hasher, D: Data> FullUnit<H, D> {
     }
     pub(crate) fn carried(&self) -> CarriedUnit<D> {
         CarriedUnit {
+            session: self.session_id,
             creator: self.creator(),
             round: self.round(),
             data: self.data.clone(),
