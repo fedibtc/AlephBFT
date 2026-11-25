@@ -64,7 +64,7 @@ where
                 }
             };
             debug!(target: "AlephBFT-packer", "{:?} Received PreUnit.", self.index());
-            let data = self.data_provider.get_data(preunit.round()).await;
+            let data = self.data_provider.get_data().await;
             debug!(target: "AlephBFT-packer", "{:?} Received data.", self.index());
             let full_unit = FullUnit::new(preunit, data, self.session_id);
             let signed_unit = Signed::sign(full_unit, &self.keychain);
@@ -174,50 +174,6 @@ mod tests {
         .into_signable();
         assert_eq!(SESSION_ID, unit.session_id());
         assert_eq!(unit.as_pre_unit(), &preunit);
-    }
-
-    /// Puts the round it is asked for into the unit.
-    struct RoundDataProvider;
-
-    #[async_trait::async_trait]
-    impl aleph_bft_types::DataProvider<Data> for RoundDataProvider {
-        async fn get_data(&mut self, round: crate::Round) -> Option<Data> {
-            Some(round.into())
-        }
-    }
-
-    #[tokio::test]
-    async fn data_is_requested_for_the_round_of_the_unit() {
-        let keychain = Keychain::new(N_MEMBERS, NODE_ID);
-        let (preunits_channel, preunits_from_runway) = mpsc::unbounded::<PreUnit<Hasher64>>();
-        let (signed_units_for_runway, mut signed_units_channel) =
-            mpsc::unbounded::<SignedUnit<Hasher64, Data, Keychain>>();
-        let mut packer = Packer::new(
-            RoundDataProvider,
-            preunits_from_runway,
-            signed_units_for_runway,
-            keychain,
-            SESSION_ID,
-        );
-        let (_exit_tx, exit_rx) = oneshot::channel();
-        let control_hash = ControlHash::new(&NodeMap::with_size(N_MEMBERS));
-        let packer_handle = packer
-            .run(Terminator::create_root(exit_rx, "AlephBFT-packer"))
-            .fuse();
-        pin_mut!(packer_handle);
-        for round in [0, 7] {
-            preunits_channel
-                .unbounded_send(PreUnit::new(NODE_ID, round, control_hash.clone()))
-                .expect("Packer PreUnit channel closed");
-            let unit = futures::select! {
-                unit = signed_units_channel.next() => unit.expect("Packer SignedUnit channel closed"),
-                _ = packer_handle => panic!("Packer terminated early"),
-            }
-            .into_unchecked()
-            .into_signable();
-            assert_eq!(unit.round(), round);
-            assert_eq!(unit.data(), &Some(Data::from(round)));
-        }
     }
 
     #[tokio::test]

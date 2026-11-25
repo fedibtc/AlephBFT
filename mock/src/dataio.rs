@@ -1,6 +1,4 @@
-use aleph_bft_types::{
-    DataProvider as DataProviderT, FinalizationHandler as FinalizationHandlerT, Round,
-};
+use aleph_bft_types::{DataProvider as DataProviderT, FinalizationHandler as FinalizationHandlerT};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use futures::{channel::mpsc::unbounded, future::pending, AsyncWrite};
@@ -42,7 +40,7 @@ impl DataProvider {
 
 #[async_trait]
 impl DataProviderT<Data> for DataProvider {
-    async fn get_data(&mut self, _round: Round) -> Option<Data> {
+    async fn get_data(&mut self) -> Option<Data> {
         self.counter += 1;
         if let Some(n_data) = self.n_data {
             if n_data < self.counter {
@@ -64,7 +62,7 @@ impl StalledDataProvider {
 
 #[async_trait]
 impl DataProviderT<Data> for StalledDataProvider {
-    async fn get_data(&mut self, _round: Round) -> Option<Data> {
+    async fn get_data(&mut self) -> Option<Data> {
         pending().await
     }
 }
